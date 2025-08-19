@@ -102,4 +102,4 @@ auto_augment: randaugment
 erasing: 0.4
 cfg: null
 tracker: botsort.yaml
-save_dir: c:\Users\berna\OneDrive\Documentos\waza\Proyecto_ia_legua_se-as_2025\runs\detect\train
+save_dir: c:\Users\berna\Documents\Proyecto_ia_legua_se-as_2025\runs\detect\train
