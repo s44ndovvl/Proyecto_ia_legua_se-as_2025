@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>signAI — Detección en tiempo real</title>
+  <style>
+    :root {
+      --bg: #0f1221;
+      --panel: #171a2b;
+      --panel-2: #1f2340;
+      --text: #e8ecff;
+      --muted: #a8b0d4;
+      --brand: #6d8cff;
+      --brand-2: #5fe1c3;
+      --accent: #ffd166;
+      --danger: #ff6b6b;
+      --shadow: 0 8px 24px rgba(0,0,0,0.35);
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; padding: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue", sans-serif;
+      background: radial-gradient(1200px 500px at 80% -200px, rgba(93,129,255,0.25), transparent),
+                  radial-gradient(1200px 500px at -20% -200px, rgba(95,225,195,0.18), transparent),
+                  var(--bg);
+      color: var(--text);
+    }
+    .header {
+      position: sticky; top: 0; z-index: 10;
+      background: rgba(15,18,33,0.75); backdrop-filter: blur(8px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .header-inner { max-width: 1100px; margin: 0 auto; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: 0.3px; }
+    .brand-logo { width: 28px; height: 28px; border-radius: 6px; background: linear-gradient(135deg, var(--brand), var(--brand-2)); box-shadow: var(--shadow); }
+    .brand-name { font-size: 18px; }
+    .subtitle { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+    .container { max-width: 1100px; margin: 0 auto; padding: 24px 20px 40px; }
+    .grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 20px; }
+    @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+
+    .surface { background: linear-gradient(180deg, var(--panel), var(--panel-2)); border: 1px solid rgba(255,255,255,0.06); border-radius: var(--radius); box-shadow: var(--shadow); }
+    .panel { padding: 16px; }
+    .panel h3, .panel h4 { margin: 0 0 12px 0; font-weight: 600; }
+    .muted { color: var(--muted); }
+
+    .controls { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    .segmented {
+      display: inline-flex; border: 1px solid rgba(255,255,255,0.12); border-radius: 999px; overflow: hidden; background: rgba(255,255,255,0.06);
+    }
+    .segmented label { padding: 6px 12px; cursor: pointer; color: var(--muted); user-select: none; }
+    .segmented input { display: none; }
+    .segmented input:checked + span { background: linear-gradient(90deg, var(--brand), var(--brand-2)); color: #0b0e1c; font-weight: 700; }
+    .segmented span { display: inline-block; padding: 6px 12px; }
+
+    .file { display: inline-block; }
+    .hint { font-size: 12px; color: var(--muted); }
+
+    .control { display: grid; grid-template-columns: 60px 1fr 60px; gap: 10px; align-items: center; }
+    .control input[type="range"] { width: 100%; }
+    .control .value { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    .btn { appearance: none; border: none; border-radius: 10px; padding: 10px 14px; font-weight: 600; color: #0b0e1c; cursor: pointer; background: linear-gradient(90deg, var(--brand), var(--brand-2)); box-shadow: var(--shadow); }
+    .btn.secondary { background: transparent; color: var(--text); border: 1px solid rgba(255,255,255,0.14); }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .viewer { position: relative; width: 100%; max-width: 640px; aspect-ratio: 4/3; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08); background: #0b0e1c; }
+    .viewer img, .viewer video, .viewer canvas { width: 100%; height: 100%; display: block; object-fit: contain; }
+    .viewer canvas { position: absolute; left: 0; top: 0; pointer-events: none; }
+
+    .output-img { width: 100%; max-width: 520px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); display: block; }
+    #json { background: rgba(0,0,0,0.35); padding: 12px; border-radius: 8px; max-height: 340px; overflow: auto; }
+
+    .status { margin-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    #log { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; background: rgba(0,0,0,0.35); padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); }
+    .badge { padding: 6px 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 999px; font-variant-numeric: tabular-nums; }
+  .big-label { font-size: clamp(18px, 3.2vw, 28px); font-weight: 800; letter-spacing: 0.3px; color: #0b0e1c; background: linear-gradient(90deg, var(--brand), var(--brand-2)); border: none; box-shadow: var(--shadow); }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-logo"></div>
+        <div>
+          <div class="brand-name">signAI</div>
+          <div class="subtitle">Detección de señas en tiempo real</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="grid">
+      <!-- LEFT: Viewer -->
+      <section class="surface panel">
+        <h3>Visor</h3>
+        <p class="muted">Elige “Cámara” para ver detección en vivo o “Subir” para procesar una imagen.</p>
+        <div class="viewer" id="camWrap">
+          <img id="preview" alt="Vista previa" />
+          <video id="video" autoplay playsinline style="display:none;"></video>
+          <canvas id="overlay" style="display:none;"></canvas>
+        </div>
+        <div class="status">
+          <span class="badge big-label" id="currentLabel">—</span>
+          <div id="log">Listo</div>
+          <div class="badge">FPS: <span id="fps">—</span></div>
+        </div>
+      </section>
+
+      <!-- RIGHT: Controls + Output -->
+      <section class="surface panel">
+        <h3>Controles</h3>
+        <div class="controls">
+          <div class="row">
+            <div class="segmented">
+              <label><input type="radio" name="mode" value="upload" checked /><span>Subir</span></label>
+              <label><input type="radio" name="mode" value="camera" /><span>Cámara</span></label>
+            </div>
+            <div class="file">
+              <input id="file" type="file" accept="image/*" />
+            </div>
+          </div>
+
+          <div class="control">
+            <div class="muted">conf</div>
+            <input id="conf" type="range" min="0" max="1" step="0.01" value="0.50" />
+            <div class="value"><span id="confVal">0.50</span></div>
+          </div>
+          <div class="control">
+            <div class="muted">iou</div>
+            <input id="iou" type="range" min="0" max="1" step="0.01" value="0.45" />
+            <div class="value"><span id="iouVal">0.45</span></div>
+          </div>
+          <div class="control">
+            <div class="muted">imgsz</div>
+            <select id="imgsz" style="width:100%;">
+              <option value="640">640</option>
+              <option value="768">768</option>
+              <option value="896" selected>896</option>
+              <option value="1024">1024</option>
+              <option value="1152">1152</option>
+            </select>
+            <div class="value"><span id="imgszVal">896</span></div>
+          </div>
+          <label class="row"><input id="returnImage" type="checkbox" checked /> <span>Devolver imagen (modo Subir)</span></label>
+          <div class="row">
+            <button id="run" class="btn">Predecir</button>
+            <span class="hint">En cámara, el botón alterna iniciar/detener.</span>
+          </div>
+          <label class="row"><input id="letterSmooth" type="checkbox" /> <span>Estabilizar letra (evitar saltos)</span></label>
+          <label class="row"><input id="debugOverlay" type="checkbox" /> <span>Mostrar índice y score</span></label>
+        </div>
+
+        <h4 style="margin-top:18px;">Salida</h4>
+        <img id="out" class="output-img" alt="Salida anotada" />
+        <div id="json" style="display:none;"></div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+  const fileEl = document.getElementById('file');
+    const confEl = document.getElementById('conf');
+    const iouEl = document.getElementById('iou');
+    const retEl = document.getElementById('returnImage');
+    const runBtn = document.getElementById('run');
+    const preview = document.getElementById('preview');
+  const video = document.getElementById('video');
+  const overlay = document.getElementById('overlay');
+    const outImg = document.getElementById('out');
+    const jsonDiv = document.getElementById('json');
+    const log = document.getElementById('log');
+  const modeEls = Array.from(document.querySelectorAll('input[name="mode"]'));
+    const fpsEl = document.getElementById('fps');
+    const confVal = document.getElementById('confVal');
+    const iouVal = document.getElementById('iouVal');
+  const currentLabelEl = document.getElementById('currentLabel');
+  const letterSmoothEl = document.getElementById('letterSmooth');
+  const debugOverlayEl = document.getElementById('debugOverlay');
+  const imgszEl = document.getElementById('imgsz');
+  const imgszVal = document.getElementById('imgszVal');
+  let recentLabels = [];
+  const MAX_LABELS = 7;
+
+  // Detect backend base URL so this page can run via Live Server (e.g., :5500)
+  // Priority: ?api=<url> > same-origin (port 8000) > http://localhost:8000
+  const API_BASE = (() => {
+    try {
+      const qp = new URLSearchParams(location.search);
+      const a = qp.get('api');
+      if (a) return a.replace(/\/+$/,'');
+      if (location.port === '8000') return `${location.protocol}//${location.host}`;
+    } catch {}
+    return 'http://localhost:8000';
+  })();
+  // Small hint in console for debugging
+  console.log('[signAI] API_BASE =', API_BASE);
+
+  let ws = null;
+  let animId = null;
+  let streaming = false;
+  let awaiting = false; // true while waiting for server result
+    let lastTs = 0; let fpsAvg = null;
+  let demoMode = false; // demo disabled
+  let demoAnimId = null;
+
+    fileEl.addEventListener('change', () => {
+      const f = fileEl.files?.[0];
+      if (f) {
+        const url = URL.createObjectURL(f);
+        preview.src = url;
+        preview.style.display = '';
+      }
+    });
+
+    function updateValueLabels(){
+      confVal.textContent = Number(confEl.value).toFixed(2);
+      iouVal.textContent = Number(iouEl.value).toFixed(2);
+      if (imgszVal && imgszEl) imgszVal.textContent = imgszEl.value;
+    }
+    confEl.addEventListener('input', updateValueLabels);
+    iouEl.addEventListener('input', updateValueLabels);
+    if (imgszEl) imgszEl.addEventListener('change', updateValueLabels);
+    updateValueLabels();
+
+    function getMode(){
+      return modeEls.find(r=>r.checked)?.value || 'upload';
+    }
+
+  modeEls.forEach(radio => {
+      radio.addEventListener('change', async () => {
+        const mode = getMode();
+        if (mode === 'camera') {
+          // Switch to camera mode
+          outImg.removeAttribute('src');
+          jsonDiv.style.display = 'none';
+          preview.style.display = 'none';
+          video.style.display = '';
+          overlay.style.display = '';
+          runBtn.textContent = 'Iniciar cámara';
+        } else {
+          // Switch to upload mode
+          stopCamera();
+          video.style.display = 'none';
+          overlay.style.display = 'none';
+          preview.style.display = '';
+          runBtn.textContent = 'Predecir';
+        }
+      });
+    });
+
+    runBtn.addEventListener('click', async () => {
+      if (getMode() === 'camera') {
+        // In camera mode, toggle start/stop
+  if (!streaming) await startCamera(); else stopCamera();
+        return;
+      }
+
+      const f = fileEl.files?.[0];
+      if (!f) { alert('Selecciona una imagen'); return; }
+
+      const form = new FormData();
+      form.append('file', f);
+
+      const params = new URLSearchParams({
+        conf: confEl.value,
+        iou: iouEl.value,
+        imgsz: (imgszEl?.value || '896'),
+        return_image: retEl.checked ? 'true' : 'false',
+      });
+
+      log.textContent = 'Enviando petición...';
+      try {
+  const resp = await fetch(`${API_BASE}/predict?${params.toString()}`, { method: 'POST', body: form });
+        const ct = resp.headers.get('content-type') || '';
+        if (ct.includes('image/')) {
+          const blob = await resp.blob();
+          outImg.src = URL.createObjectURL(blob);
+          jsonDiv.style.display = 'none';
+          const topLabel = resp.headers.get('X-Top-Label');
+          const topCls = resp.headers.get('X-Top-Class');
+          if (topLabel || topCls){
+            currentLabelEl.textContent = `${topLabel || ('cls '+topCls)}`;
+          } else {
+            currentLabelEl.textContent = '—';
+          }
+        } else {
+          const data = await resp.json();
+          outImg.removeAttribute('src');
+          jsonDiv.style.display = 'block';
+          jsonDiv.textContent = JSON.stringify(data, null, 2);
+          updateTopLabelFromDetections(data?.detections);
+        }
+        log.textContent = 'Listo';
+      } catch (e) {
+        console.error(e);
+        log.textContent = 'Error: ' + (e?.message || e);
+      }
+    });
+
+    async function startCamera(){
+      try{
+        if (!video.srcObject) {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+          video.srcObject = stream;
+          await video.play();
+        }
+
+        // Open WebSocket
+  const params = new URLSearchParams({ conf: confEl.value, iou: iouEl.value, imgsz: (imgszEl?.value || '896') });
+  const apiUrl = new URL(API_BASE);
+  const proto = apiUrl.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${apiUrl.host}/ws?${params.toString()}`);
+
+        ws.onopen = () => {
+          log.textContent = 'Cámara conectada. Enviando frames...';
+          streaming = true;
+          pumpFrames();
+          runBtn.textContent = 'Detener cámara';
+        };
+        ws.onclose = () => {
+          log.textContent = 'Conexión cerrada';
+          streaming = false;
+          if (animId) cancelAnimationFrame(animId);
+          runBtn.textContent = 'Iniciar cámara';
+          // No demo fallback
+        };
+        ws.onerror = (e) => {
+          console.error(e);
+          log.textContent = 'Error WebSocket';
+        };
+        ws.onmessage = (ev) => {
+          try{
+            const data = JSON.parse(ev.data);
+      if (data && !data.error) drawDetections(data);
+      awaiting = false;
+            const now = performance.now();
+            if (lastTs){
+              const fps = 1000 / (now - lastTs);
+              fpsAvg = fpsAvg ? (fpsAvg*0.85 + fps*0.15) : fps;
+              fpsEl.textContent = (fpsAvg).toFixed(1);
+            }
+            lastTs = now;
+          }catch{ /* ignore */ }
+        };
+      }catch(e){
+        console.error(e);
+        log.textContent = 'No se pudo iniciar la cámara: ' + (e?.message || e);
+      }
+    }
+
+    function stopCamera(){
+      streaming = false;
+      if (animId) cancelAnimationFrame(animId);
+      animId = null;
+  // no demo
+      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+      ws = null;
+      const stream = video.srcObject;
+      if (stream) {
+        stream.getTracks().forEach(t=>t.stop());
+        video.srcObject = null;
+      }
+      const ctx = overlay.getContext('2d');
+      if (ctx) ctx.clearRect(0,0,overlay.width, overlay.height);
+      log.textContent = 'Cámara detenida';
+  runBtn.textContent = 'Iniciar cámara';
+  fpsEl.textContent = '—'; lastTs = 0; fpsAvg = null;
+    }
+
+    function pumpFrames(){
+  if (!streaming || !ws || ws.readyState !== WebSocket.OPEN) return;
+      animId = requestAnimationFrame(pumpFrames);
+  if (awaiting) return; // wait for previous inference
+      // Draw current video frame to an offscreen canvas, encode to JPEG, send bytes
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      if (!w || !h) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, w, h);
+      overlay.width = w; overlay.height = h;
+      canvas.toBlob((blob)=>{
+        if (blob && ws && ws.readyState === WebSocket.OPEN){
+          blob.arrayBuffer().then(buf=>{
+    awaiting = true;
+    ws.send(new Uint8Array(buf));
+          });
+        }
+      }, 'image/jpeg', 0.7);
+    }
+
+    function drawDetections(data){
+      const ctx = overlay.getContext('2d');
+      if (!ctx) return;
+      const w = overlay.width;
+      const h = overlay.height;
+      ctx.clearRect(0,0,w,h);
+      ctx.lineWidth = Math.max(2, Math.min(w,h) * 0.004);
+      ctx.font = `${Math.max(12, Math.min(w,h)*0.03)}px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+      ctx.strokeStyle = '#6dff9b';
+      ctx.fillStyle = 'rgba(99, 255, 191, 0.18)';
+      const dets = data.detections||[];
+      // Draw boxes
+      dets.forEach(det=>{
+        const b = det.box; if (!b) return;
+        const x = b.x1, y = b.y1, ww = b.x2 - b.x1, hh = b.y2 - b.y1;
+        const col = det.color || {r: 109, g: 255, b: 155};
+        ctx.fillStyle = `rgba(${col.r}, ${col.g}, ${col.b}, 0.18)`;
+        ctx.strokeStyle = `rgb(${col.r}, ${col.g}, ${col.b})`;
+        ctx.fillRect(x, y, ww, hh);
+        ctx.strokeRect(x, y, ww, hh);
+  const label = det.label ?? `cls ${det.class ?? ''}`;
+  const text = debugOverlayEl?.checked
+    ? `${label} (cls ${det.class ?? ''}, s ${(det.score ?? 0).toFixed(2)})`
+    : `${label}`;
+        const tw = ctx.measureText(text).width + 6;
+        const th = parseInt(ctx.font,10) + 6;
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(x, Math.max(0,y-th), tw, th);
+        ctx.fillStyle = `rgb(${col.r}, ${col.g}, ${col.b})`;
+        ctx.fillText(text, x+3, Math.max(12, y-4));
+      });
+
+      // Update big current label (top-1 by score)
+      updateTopLabelFromDetections(dets);
+    }
+
+  // Demo removed per user request
+
+    function updateTopLabelFromDetections(dets){
+      if (!Array.isArray(dets) || dets.length === 0){
+        currentLabelEl.textContent = '—';
+        recentLabels = [];
+        return;
+      }
+      let best = dets[0];
+      for (const d of dets){
+        if ((d?.score ?? -1) > (best?.score ?? -1)) best = d;
+      }
+  const label = best?.label ?? (best?.class != null ? `cls ${best.class}` : '—');
+  if (!letterSmoothEl?.checked) {
+    currentLabelEl.textContent = `${label}`;
+    return;
+  }
+  if (label && label !== '—'){
+    recentLabels.push(label);
+    if (recentLabels.length > MAX_LABELS) recentLabels.shift();
+    // Mode of recent labels
+    const counts = recentLabels.reduce((m, l)=>{ m[l]=(m[l]||0)+1; return m; }, {});
+    let stable = label, maxC = -1;
+    for (const [k,v] of Object.entries(counts)){
+      if (v > maxC){ maxC = v; stable = k; }
+    }
+    currentLabelEl.textContent = `${stable}`;
+  } else {
+    currentLabelEl.textContent = `${label}`;
+  }
+    }
+  </script>
+</body>
+</html>
